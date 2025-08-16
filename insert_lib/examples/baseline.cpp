@@ -68,6 +68,7 @@ void worker_thread(DBWrapper& db,
             string value = "Value" + to_string(j);
             
             auto status = db.getDB()->Put(options, key, value);
+            total_entries_inserted++;
             if (!status.ok()) {
                 cout << "线程 " << thread_id << " 插入KV失败: " << status.ToString() << endl;
             }
