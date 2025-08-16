@@ -35,7 +35,9 @@ void worker_thread(DBWrapper& db,
                   ColumnFamilyData* cfd, 
                   int thread_id, 
                   int entries_per_memtable, 
-                  int num_insertions) {
+                  int num_insertions,
+                  bool random_key,
+                  bool disable_actual_write) {
     
     // 将线程绑定到指定的CPU核心
     cpu_set_t cpuset;
@@ -55,6 +57,8 @@ void worker_thread(DBWrapper& db,
     // 线程本地统计
     int local_memtables_created = 0;
     int local_entries_inserted = 0;
+
+    unsigned int seed = thread_id;
     
     for (int i = 0; i < num_insertions; i++) {
         // 创建新的memtable
@@ -69,7 +73,8 @@ void worker_thread(DBWrapper& db,
         
         // 向memtable插入数据
         for (int j = 0; j < entries_per_memtable; j++) {
-            string key = "Thread" + to_string(thread_id) + "_Mem" + to_string(i) + "_Key" + to_string(j);
+            int rand_prefix = rand_r(&seed);
+            string key = "Prefix" + to_string(random_key ? rand_prefix : 0) + "_Thread" + to_string(thread_id) + "_Mem" + to_string(i) + "_Key" + to_string(j);
             string value = "Value" + to_string(j);
             
             auto status = mem->Add(j + 1, kTypeValue, key, Slice(value), nullptr, false);
@@ -81,8 +86,12 @@ void worker_thread(DBWrapper& db,
             }
         }
         
+        auto status = Status::OK();
         // 将memtable插入到数据库
-        auto status = db.insertMemTable(cfd, mem, 0);
+        if (!disable_actual_write)
+            status = db.insertMemTable(cfd, mem, 0);
+        else
+            delete mem;
         if (!status.ok()) {
             cout << "线程 " << thread_id << " 插入memtable失败: " << status.ToString() << endl;
         }
@@ -113,16 +122,17 @@ void worker_thread(DBWrapper& db,
 }
 
 void print_usage(const char* program_name) {
-    cout << "用法: " << program_name << " <线程数> <每个memtable的entry数> <插入次数>" << endl;
+    cout << "用法: " << program_name << " <线程数> <每个memtable的entry数> <插入次数> <key分布是否随机> <是否禁用实际写入>" << endl;
     cout << "示例: " << program_name << " 4 1000 100" << endl;
     cout << "参数说明:" << endl;
     cout << "  线程数: 并发工作的线程数量" << endl;
     cout << "  每个memtable的entry数: 每个memtable中插入的键值对数量" << endl;
     cout << "  插入次数: 每个线程创建和插入memtable的次数" << endl;
+    cout << "  是否禁用实际写入: 若禁用，则仅进行memtable构造" << endl;
 }
 
 int main(int argc, char* argv[]) {
-    if (argc != 4) {
+    if (argc != 6) {
         print_usage(argv[0]);
         return 1;
     }
@@ -131,6 +141,8 @@ int main(int argc, char* argv[]) {
     int num_threads = atoi(argv[1]);
     int entries_per_memtable = atoi(argv[2]);
     int num_insertions = atoi(argv[3]);
+    bool random_key = atoi(argv[4]) != 0;
+    bool disable_actual_write = atoi(argv[5]) != 0;
     
     if (num_threads <= 0 || entries_per_memtable <= 0 || num_insertions <= 0) {
         cout << "错误: 所有参数必须为正整数" << endl;
@@ -203,7 +215,7 @@ int main(int argc, char* argv[]) {
     // 创建并启动工作线程
     vector<thread> threads;
     for (int i = 0; i < num_threads; i++) {
-        threads.emplace_back(worker_thread, ref(db_wrapper), cfd, i, entries_per_memtable, num_insertions);
+        threads.emplace_back(worker_thread, ref(db_wrapper), cfd, i, entries_per_memtable, num_insertions, random_key, disable_actual_write);
     }
     
     // 等待所有线程完成
