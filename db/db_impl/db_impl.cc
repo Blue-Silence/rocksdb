@@ -178,6 +178,7 @@ DBImpl::DBImpl(const DBOptions& options, const std::string& dbname,
       fs_(immutable_db_options_.fs, io_tracer_),
       mutable_db_options_(initial_db_options_),
       stats_(immutable_db_options_.stats),
+      footag1(123456),
 #ifdef COERCE_CONTEXT_SWITCH
       mutex_(stats_, immutable_db_options_.clock, DB_MUTEX_WAIT_MICROS, &bg_cv_,
              immutable_db_options_.use_adaptive_mutex),
@@ -185,6 +186,7 @@ DBImpl::DBImpl(const DBOptions& options, const std::string& dbname,
       mutex_(stats_, immutable_db_options_.clock, DB_MUTEX_WAIT_MICROS,
              immutable_db_options_.use_adaptive_mutex),
 #endif  // COERCE_CONTEXT_SWITCH
+      footag2(654321),
       error_handler_(this, immutable_db_options_, &mutex_),
       event_logger_(immutable_db_options_.info_log.get()),
       max_total_in_memory_state_(0),
@@ -6903,5 +6905,10 @@ void DBImpl::TrackOrUntrackFiles(
     action(file_path, /*size=*/std::nullopt);
   }
 }
+
+    void DBImpl::check_tag(int &a, int &b) {a=footag1;b=footag2;}
+    void DBImpl::lock_db() {mutex_.Lock();}
+    void DBImpl::unlock_db() {mutex_.Unlock();}
+
 
 }  // namespace ROCKSDB_NAMESPACE

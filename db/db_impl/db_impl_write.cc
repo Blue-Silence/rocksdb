@@ -2954,4 +2954,141 @@ Status DB::Merge(const WriteOptions& opt, ColumnFamilyHandle* column_family,
   return Write(opt, &batch);
 }
 
+Status DBImpl::InsertIMM(ColumnFamilyData* cfd, ReadOnlyMemTable* new_imm) {
+  assert(new_imm != nullptr);
+  new_imm->Ref();
+  WriteContext context;
+  mutex_.Lock();
+  mutex_.AssertHeld();
+  /// assert(lock_wal_count_ == 0);
+
+  // TODO: plumb Env::IOActivity, Env::IOPriority
+  const WriteOptions write_options;
+
+  /// log::Writer* new_log = nullptr;
+  /// MemTable* new_mem = nullptr;
+  IOStatus io_s;
+
+  // Recoverable state is persisted in WAL. After memtable switch, WAL might
+  // be deleted, so we write the state to memtable to be persisted as well.
+  /**/
+  Status s = WriteRecoverableState();
+  if (!s.ok()) {
+    return s;
+  }
+
+  // For use outside of holding DB mutex
+  const MutableCFOptions mutable_cf_options_copy =
+      cfd->GetLatestMutableCFOptions();
+
+  // Set memtable_info for memtable sealed callback
+  // TODO: memtable_info for `new_imm`
+  MemTableInfo memtable_info;
+  memtable_info.cf_name = cfd->GetName();
+  memtable_info.first_seqno = cfd->mem()->GetFirstSequenceNumber();
+  memtable_info.earliest_seqno = cfd->mem()->GetEarliestSequenceNumber();
+  memtable_info.num_entries = cfd->mem()->NumEntries();
+  memtable_info.num_deletes = cfd->mem()->NumDeletion();
+  if (!cfd->ioptions().persist_user_defined_timestamps &&
+      cfd->user_comparator()->timestamp_size() > 0) {
+    const Slice& newest_udt = cfd->mem()->GetNewestUDT();
+    memtable_info.newest_udt.assign(newest_udt.data(), newest_udt.size());
+  }
+  // Log this later after lock release. It may be outdated, e.g., if background
+  // flush happens before logging, but that should be ok.
+
+  // int num_imm_unflushed = cfd->imm()->NumNotFlushed();
+  // const auto preallocate_block_size =
+  //     GetWalPreallocateBlockSize(mutable_cf_options_copy.write_buffer_size);
+  mutex_.Unlock();
+  if (s.ok()) {
+    // FIXME: from the comment for GetEarliestSequenceNumber(), any key with
+    //  seqno >= earliest_seqno should be in this or later memtable. This means
+    //  we should use LastSequence() + 1 or last_seqno + 1 here. And it needs to
+    //  be incremented with file ingestion and other operations that consumes
+    //  sequence number.
+
+    /*
+    SequenceNumber seq;
+    if (new_imm) {
+      assert(last_seqno > versions_->LastSequence());
+      seq = last_seqno;
+    } else {
+      seq = versions_->LastSequence();
+    }
+    */
+    context.superversion_context.NewSuperVersion();
+  }
+
+  mutex_.Lock();
+  if (!s.ok()) {
+    assert(false);
+  }
+
+  cfd->imm()->Add(cfd->mem(), &context.memtables_to_free_);
+  if (new_imm) {
+    // Need to assign memtable id here before SetMemtable() below assigns id to
+    // the new live memtable
+    cfd->AssignMemtableID(new_imm);
+    // NOTE: new_imm and cfd->mem() references the same WAL and has the same
+    // NextLogNumber(). They should be flushed together. For non-atomic-flush,
+    // we always try to flush all immutable memtable. For atomic flush, these
+    // two memtables will be marked eligible for flush in the same call to
+    // AssignAtomicFlushSeq().
+
+    // new_imm->SetNextLogNumber(cur_wal_number_);
+
+    cfd->imm()->Add(new_imm, &context.memtables_to_free_);
+  }
+
+  cfd->mem()->Ref();
+  // InstallSuperVersionAndScheduleWork(cfd, &context.superversion_context,{},
+  // true);
+  cfd->InstallSuperVersion(&context.superversion_context, &mutex_, {});
+
+  // Notify client that memtable is sealed, now that we have successfully
+  // installed a new memtable
+
+  //?NotifyOnMemTableSealed(cfd, memtable_info);
+
+  // It is possible that we got here without checking the value of i_os, but
+  // that is okay.  If we did, it most likely means that s was already an error.
+  // In any case, ignore any unchecked error for i_os here.
+  io_s.PermitUncheckedError();
+  // We guarantee that if a non-ok status is returned, `new_imm` was not added
+  // to the db.
+  assert(s.ok());
+
+  cfd->imm()->FlushRequested();
+  // if (!immutable_db_options_.atomic_flush) {
+  FlushRequest flush_req;
+  // TODO: a new flush reason for ingesting memtable
+  GenerateFlushRequest({cfd}, FlushReason::kExternalFileIngestion, &flush_req);
+  EnqueuePendingFlush(flush_req);
+  //}
+  MaybeScheduleFlushOrCompaction();
+  mutex_.Unlock();
+  return s;
+}
+
+Status DBImpl::InsertIMM2(ColumnFamilyData* cfd, ReadOnlyMemTable* new_imm,
+                          SequenceNumber last_seqno) {
+  WriteContext context;
+  assert(new_imm != nullptr);
+  mutex_.Lock();
+  new_imm->Ref();
+  auto re = SwitchMemtable(cfd, &context, new_imm, last_seqno);
+
+  cfd->imm()->FlushRequested();
+  // if (!immutable_db_options_.atomic_flush) {
+  FlushRequest flush_req;
+  // TODO: a new flush reason for ingesting memtable
+  GenerateFlushRequest({cfd}, FlushReason::kExternalFileIngestion, &flush_req);
+  EnqueuePendingFlush(flush_req);
+  //}
+  MaybeScheduleFlushOrCompaction();
+  mutex_.Unlock();
+  return re;
+}
+
 }  // namespace ROCKSDB_NAMESPACE

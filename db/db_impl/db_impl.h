@@ -1362,7 +1362,10 @@ class DBImpl : public DB {
   // db_session_id_ is an identifier that gets reset
   // every time the DB is opened
   std::string db_session_id_;
+public:
+  //Set to public
   std::unique_ptr<VersionSet> versions_;
+protected:
   // Flag to check whether we allocated and own the info log file
   bool own_info_log_;
   Status init_logger_creation_s_;
@@ -1393,7 +1396,20 @@ class DBImpl : public DB {
   //
   // `mutex_` can be a hot lock in some workloads, so it deserves dedicated
   // cachelines.
+public:
+  int footag1 = 123456;
   mutable CacheAlignedInstrumentedMutex mutex_;
+  int footag2 = 654321;
+  void check_tag(int &a, int &b);
+  void lock_db();
+  void unlock_db();
+                      
+  Status InsertIMM(ColumnFamilyData* cfd,
+                        ReadOnlyMemTable* new_imm = nullptr);
+  Status InsertIMM2(ColumnFamilyData* cfd,
+                        ReadOnlyMemTable* new_imm,
+                      SequenceNumber last_seqno);
+protected:
 
   ColumnFamilyHandleImpl* default_cf_handle_ = nullptr;
   InternalStats* default_cf_internal_stats_ = nullptr;
