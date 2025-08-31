@@ -53,6 +53,10 @@ class DBWrapper {
     return s;
   }
 
+  void setLastSequence(rocksdb::SequenceNumber last_seq) {
+    dbimpl->versions_->SetLastSequence(last_seq);
+  }
+
  private:
   rocksdb::DBImpl* dbimpl;
 };
