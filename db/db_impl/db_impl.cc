@@ -6909,6 +6909,7 @@ void DBImpl::TrackOrUntrackFiles(
     void DBImpl::check_tag(int &a, int &b) {a=footag1;b=footag2;}
     void DBImpl::lock_db() {mutex_.Lock();}
     void DBImpl::unlock_db() {mutex_.Unlock();}
+    VersionSet* DBImpl::GetVersionSetNoInline() const { return versions_.get(); }
 
 
 }  // namespace ROCKSDB_NAMESPACE

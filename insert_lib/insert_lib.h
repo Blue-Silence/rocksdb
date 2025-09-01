@@ -48,13 +48,13 @@ class DBWrapper {
                                  rocksdb::SequenceNumber last_seq = 0) {
     auto s = dbimpl->InsertIMM(cfd, new_mem);
     if (last_seq !=0) {
-        dbimpl->versions_->SetLastSequence(last_seq);
+        dbimpl->GetVersionSetNoInline()->SetLastSequence(last_seq);
     }
     return s;
   }
 
   void setLastSequence(rocksdb::SequenceNumber last_seq) {
-    dbimpl->versions_->SetLastSequence(last_seq);
+    dbimpl->GetVersionSetNoInline()->SetLastSequence(last_seq);
   }
 
  private:

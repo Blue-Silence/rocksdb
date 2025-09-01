@@ -1123,6 +1123,7 @@ class DBImpl : public DB {
                                      std::string* out_str);
 
   VersionSet* GetVersionSet() const { return versions_.get(); }
+  VersionSet* GetVersionSetNoInline() const;
 
   Status WaitForCompact(
       const WaitForCompactOptions& wait_for_compact_options) override;
