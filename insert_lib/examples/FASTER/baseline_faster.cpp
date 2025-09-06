@@ -87,8 +87,8 @@ void worker_thread(FasterKv<Key, Value, disk_t>& store,
             //string value = "Value" + to_string(j);
             
             auto seq_n = seq.fetch_add(1, memory_order_release);
-            //UpsertContext upsert_context{ Key{thread_id * seq_n}, Value{thread_id * seq_n} };
-            UpsertContext upsert_context{ Key{0}, Value{thread_id * seq_n} };
+            UpsertContext upsert_context{ Key{thread_id * seq_n}, Value{thread_id * seq_n} };
+            //UpsertContext upsert_context{ Key{0}, Value{thread_id * seq_n} };
             auto status = store.Upsert(upsert_context, callback, seq_n);
             if (status != Status::Ok) {
                 cout << "线程 " << thread_id << " 插入KV失败: " << StatusStr(status) << endl;
