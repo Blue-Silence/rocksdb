@@ -46,7 +46,7 @@ class DBWrapper {
   rocksdb::Status insertMemTable(rocksdb::ColumnFamilyData* cfd,
                                  rocksdb::MemTable* new_mem,
                                  rocksdb::SequenceNumber last_seq = 0) {
-    auto s = dbimpl->InsertIMM(cfd, new_mem);
+    auto s = dbimpl->InsertIMM2(cfd, new_mem, 0);
     if (last_seq !=0) {
         dbimpl->GetVersionSetNoInline()->SetLastSequence(last_seq);
     }

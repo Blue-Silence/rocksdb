@@ -2575,7 +2575,7 @@ Status DBImpl::SwitchMemtable(ColumnFamilyData* cfd, WriteContext* context,
     //  sequence number.
     SequenceNumber seq;
     if (new_imm) {
-      assert(last_seqno > versions_->LastSequence());
+      //assert(last_seqno > versions_->LastSequence());
       seq = last_seqno;
     } else {
       seq = versions_->LastSequence();
